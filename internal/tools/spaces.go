@@ -283,6 +283,7 @@ func handleListSpaces(c *client.Client, basePath string) mcp.ToolHandlerFor[List
 		if err != nil {
 			return nil, ListSpacesOutput{}, err
 		}
+		drives = filterGrantedDrives(ctx, drives)
 		return nil, ListSpacesOutput{
 			Spaces:     drives,
 			TotalCount: len(drives),

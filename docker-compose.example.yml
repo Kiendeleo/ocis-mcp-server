@@ -1,0 +1,44 @@
+# Example: run the MCP server next to oCIS, sharing the Authentik client.
+#
+# Copy the OCIS_MCP_OIDC_* values from the same .env the oCIS service already
+# uses. oCIS itself keeps its own variable names (WEB_OIDC_*, PROXY_OIDC_*),
+# but the *values* are identical.
+#
+#   openssl rand -hex 32   → OCIS_MCP_GRANT_KEY
+#
+# Authentik: add {OCIS_MCP_PUBLIC_URL}/oauth/callback to the oCIS application.
+
+services:
+  ocis:
+    image: owncloud/ocis:latest
+    environment:
+      OCIS_URL: ${OCIS_URL}
+      PROXY_OIDC_ISSUER: ${OCIS_MCP_OIDC_ISSUER}
+      WEB_OIDC_CLIENT_ID: ${OCIS_MCP_OIDC_CLIENT_ID}
+      WEB_OIDC_CLIENT_SECRET: ${OCIS_MCP_OIDC_CLIENT_SECRET}
+    # …your existing oCIS volumes, ports, command…
+
+  ocis-mcp:
+    build: .
+    environment:
+      OCIS_MCP_OCIS_URL: ${OCIS_URL}
+      OCIS_MCP_AUTH_MODE: oauth
+      OCIS_MCP_TRANSPORT: http
+      OCIS_MCP_HTTP_ADDR: "0.0.0.0:8090"
+      OCIS_MCP_PUBLIC_URL: ${OCIS_MCP_PUBLIC_URL}
+      OCIS_MCP_OIDC_ISSUER: ${OCIS_MCP_OIDC_ISSUER}
+      OCIS_MCP_OIDC_CLIENT_ID: ${OCIS_MCP_OIDC_CLIENT_ID}
+      OCIS_MCP_OIDC_CLIENT_SECRET: ${OCIS_MCP_OIDC_CLIENT_SECRET}
+      OCIS_MCP_GRANT_KEY: ${OCIS_MCP_GRANT_KEY}
+      OCIS_MCP_GRANT_DB: /var/lib/ocis-mcp/grants.db
+      OCIS_MCP_LOG_LEVEL: info
+    volumes:
+      - mcp-grants:/var/lib/ocis-mcp
+    ports:
+      - "8090:8090"
+    depends_on:
+      - ocis
+    restart: unless-stopped
+
+volumes:
+  mcp-grants:

@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"context"
 	"testing"
+
+	"github.com/owncloud/ocis-mcp-server/internal/grant"
 )
 
 func TestBoolPtr(t *testing.T) {
@@ -53,5 +56,23 @@ func TestDestructiveAnnotations(t *testing.T) {
 	a := destructiveAnnotations()
 	if a.DestructiveHint == nil || !*a.DestructiveHint {
 		t.Error("expected DestructiveHint=true")
+	}
+}
+
+func TestFilterGrantedDrives(t *testing.T) {
+	drives := []Drive{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}
+	plain := filterGrantedDrives(context.Background(), drives)
+	if len(plain) != 2 {
+		t.Fatal("no grant → unchanged")
+	}
+	g := &grant.Grant{Spaces: []grant.SpaceGrant{{ID: "b"}}}
+	got := filterGrantedDrives(grant.WithContext(context.Background(), g), drives)
+	if len(got) != 1 || got[0].ID != "b" {
+		t.Fatalf("%+v", got)
+	}
+	g.InstanceAdmin = true
+	got = filterGrantedDrives(grant.WithContext(context.Background(), g), drives)
+	if len(got) != 2 {
+		t.Fatal("instance admin sees all")
 	}
 }

@@ -83,6 +83,31 @@ func TestAuthHeaderInjection(t *testing.T) {
 	}
 }
 
+func TestRequestScopedAuthOverridesAppToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := newTestConfig(srv.URL)
+	c := New(cfg)
+	ctx := WithAuth(context.Background(), RequestAuth{OcisAccessToken: "user-grant-token"})
+	req, err := c.NewRequest(ctx, http.MethodGet, "/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if gotAuth != "Bearer user-grant-token" {
+		t.Fatalf("got %q", gotAuth)
+	}
+}
+
 func TestErrorMapping(t *testing.T) {
 	tests := []struct {
 		name       string

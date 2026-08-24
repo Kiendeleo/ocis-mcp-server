@@ -1,61 +1,104 @@
-# agents.md -- oCIS MCP Server
+# agents.md -- oCIS MCP Server (Kiendeleo fork)
 
 ## Repository Overview
 
-Standalone MCP (Model Context Protocol) server for oCIS, written in Go. Exposes 80+ AI tools via LibreGraph, WebDAV, and OCS APIs. Licensed under Apache-2.0.
+Fork of [owncloud/ocis-mcp-server](https://github.com/owncloud/ocis-mcp-server).
+Standalone MCP server for oCIS, written in Go. This fork adds **OAuth 2.1**
+(RFC 9728 resource metadata, PKCE S256, RFC 7591 DCR) and a **space-level
+consent wizard** so one process can serve many users against Authentik as
+oCIS’s IdP.
+
+Keep the Go module path `github.com/owncloud/ocis-mcp-server` so rebases onto
+`upstream/main` stay mechanical.
+
+Apache-2.0. Licensed files are covered by root `REUSE.toml`.
 
 ## Architecture & Key Paths
 
-- `internal/` -- Server implementation and tool definitions
-- `Makefile` -- Build, test, and lint automation
-- `Dockerfile` -- Docker image build
-- `go.mod` / `go.sum` -- Go module definition
-- `GETTING_STARTED.md` -- Setup guide
-- `evaluation.xml` -- Evaluation configuration
-- `install.sh` -- Setup script
+Upstream (unchanged unless noted):
+
+- `internal/tools/` -- 80+ MCP tools (LibreGraph, WebDAV, OCS)
+- `internal/client/` -- oCIS HTTP client. **Fork:** `applyAuth` prefers a
+  per-request grant token (`internal/client/authctx.go`) over the process
+  app-token / static OIDC credential
+- `internal/config/` -- env config. **Fork:** `AUTH_MODE=oauth`
+- `cmd/ocis-mcp-server/main.go` -- stdio still uses the SDK runner; HTTP
+  goes through `internal/httpapi`
+
+Fork-only packages (do not exist upstream — keep them self-contained for rebase):
+
+| Package | Role |
+|---|---|
+| `internal/oauth` | AS metadata, DCR, token, PKCE, MCP JWTs |
+| `internal/oidc` | Discover Authentik via oCIS, list spaces, admin probe |
+| `internal/consent` | 3-step themed HTML wizard |
+| `internal/grant` | Space read/write/admin + instance-admin allow-list |
+| `internal/store` | Encrypted SQLite (AES-256-GCM) |
+| `internal/secretbox` | HKDF + AES-GCM |
+| `internal/theme` | `{ocis}/themes/owncloud/theme.json` |
+| `internal/httpapi` | One listener: well-known + consent + `/mcp` |
+
+Operator docs: [`OAUTH.md`](OAUTH.md), [`docker-compose.example.yml`](docker-compose.example.yml).
+
+## Consent rules (do not relax)
+
+- Login **is** oCIS/Authentik. Never a second password form.
+- Checklist: personal space first, then every accessible space.
+- Per space: read / write / admin. **Clamp to the user’s real oCIS role.**
+  Admin on a space = oCIS **Manager**.
+- Instance-wide tools (users, groups, roles, `ocis_list_spaces`, create space)
+  need oCIS admin **and** a separate “Instance administration” checkbox.
+- No extra knobs on the wizard.
 
 ## Development Conventions
 
-- Go codebase with minimal dependency tree
-- MCP protocol (stdio/HTTP transport)
-- No oCIS Go imports -- external client only
+- Go, CGO-free (`modernc.org/sqlite`) so `CGO_ENABLED=0` Docker builds keep working
+- MCP protocol (stdio / Streamable HTTP)
+- No oCIS Go imports — public APIs only
+- Novice-readable comments on security-sensitive code (keys, grants, PKCE)
+- Preserve upstream tool handlers; enforce grants in middleware +
+  `filterGrantedDrives` for list results
+
+## Extra dependencies (this fork)
+
+Approved; **do not** apply upstream OSPO “open an issue first” for these:
+
+- `golang.org/x/oauth2` (already transitive; used as a direct import)
+- `github.com/golang-jwt/jwt/v5`
+- `golang.org/x/crypto` (HKDF)
+- `modernc.org/sqlite`
+
+New dependencies beyond this list: discuss in a PR description first.
 
 ## Build & Test Commands
 
 ```bash
 make build                    # Build the binary
-make test                     # Run tests
-make lint                     # Run linter
-make cover                    # Generate coverage report
-make docker-build             # Build Docker image
-make clean                    # Clean build artifacts
+make test                     # go test -race ./...
+make lint                     # golangci-lint
+make cover                    # Coverage report (CI threshold 70%)
+make docker-build
 ```
 
-## Important Constraints
+OAuth mode needs no live oCIS for unit tests; handlers use `httptest` and a temp SQLite file.
 
-- Licensed under Apache-2.0 (already at the OSPO target license). The broader ownCloud organization is migrating other repositories from copyleft licenses to Apache 2.0.
-- No dependency on oCIS internals -- communicates only via public APIs.
-- All contributions require a DCO sign-off.
+## Git workflow (this fork)
 
+- Branch for review: `feat/oauth21-consent` → `main` on **this** repo
+- Rebase onto `upstream/main`; never merge-commit if we later send code back
+- DCO sign-off (`git commit -s`) when committing locally
+- GPG-signed commits are preferred but **not required** on this fork
+  (GitHub-connector / API pushes cannot sign)
+- Conventional Commit PR titles (`feat:`, `fix:`, `docs:`)
 
-## OSPO Policy Constraints
+## OSPO notes
 
-### GitHub Actions
-- **Only** use actions owned by `owncloud`, created by GitHub (`actions/*`), verified on the GitHub Marketplace, or verified by the ownCloud Maintainers.
-- Pin all actions to their full commit SHA (not tags): `uses: actions/checkout@<SHA> # vX.Y.Z`
-- Never introduce actions from unverified third parties.
-
-### Dependency Management
-- Dependabot is configured for automated dependency updates.
-- Review and merge Dependabot PRs as part of regular maintenance.
-- Do not introduce new dependencies without discussion in an issue first.
-
-### Git Workflow
-- **Rebase policy**: Always rebase; never create merge commits. Use `git pull --rebase` and `git rebase` before pushing.
-- **Signed commits**: All commits **must** be PGP/GPG signed (`git commit -S -s`).
-- **DCO sign-off**: Every commit needs a `Signed-off-by` line (`git commit -s`).
-- **Conventional Commits & Squash Merge**: Use the [Conventional Commits](https://www.conventionalcommits.org/) format where the repository enforces it. Many repos use squash merge, where the PR title becomes the commit message on the default branch — apply Conventional Commits format to PR titles as well. A reusable GitHub Actions workflow enforces this.
+Upstream OSPO rules (pin `actions/*` SHAs, no unverified Actions) still apply
+if we touch `.github/workflows`. The “issue first for every new dependency”
+rule is **waived here** — this is a product fork, not the ownCloud org repo.
 
 ## Context for AI Agents
 
-This server implements the MCP protocol to expose oCIS operations as AI-accessible tools. It uses LibreGraph API for user/group/drive management, WebDAV for file operations, and OCS for sharing. The `internal/` directory contains all tool implementations.
+When adding a tool in `internal/tools`, also classify it in
+`internal/grant/catalog.go` (`ToolNeed`). Unknown names default to
+instance-admin so they cannot leak through a read-only grant.

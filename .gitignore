@@ -8,6 +8,12 @@ dist/
 coverage.out
 coverage.html
 
+# Grant database (never commit tokens, even encrypted)
+data/
+*.db
+*.db-wal
+*.db-shm
+
 # IDE
 .idea/
 .vscode/
