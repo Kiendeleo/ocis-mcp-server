@@ -117,6 +117,13 @@ func (c *Client) DoJSON(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) applyAuth(req *http.Request) {
+	// Per-request user token from the OAuth grant wins over the process-wide
+	// app-token / static OIDC credential. That is how one MCP process can
+	// serve many users without sharing an admin token.
+	if a, ok := AuthFrom(req.Context()); ok {
+		req.Header.Set("Authorization", "Bearer "+a.OcisAccessToken)
+		return
+	}
 	switch c.cfg.AuthMode {
 	case "app-token":
 		req.SetBasicAuth(c.cfg.AppTokenUser, c.cfg.AppTokenValue)

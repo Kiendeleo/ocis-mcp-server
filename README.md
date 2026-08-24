@@ -41,6 +41,7 @@ make lint
 ## Documentation
 
 - [Getting Started Guide](GETTING_STARTED.md)
+- [OAuth 2.1 + space consent](OAUTH.md)
 - [MCP Protocol](https://modelcontextprotocol.io/)
 - [oCIS Developer Documentation](https://owncloud.dev/)
 
@@ -72,7 +73,22 @@ The server exposes 80 tools in 13 categories:
 
 ### Authentication
 
-**App Tokens (recommended):** Create in the oCIS web UI under Settings > Security > App tokens.
+**OAuth 2.1 (recommended for HTTP / many users):** each person logs in with the
+normal oCIS/Authentik page and ticks which spaces the assistant may use. See
+**[OAUTH.md](OAUTH.md)** and [`docker-compose.example.yml`](docker-compose.example.yml).
+
+```bash
+export OCIS_MCP_OCIS_URL="https://ocis.example.com"
+export OCIS_MCP_AUTH_MODE="oauth"
+export OCIS_MCP_TRANSPORT="http"
+export OCIS_MCP_HTTP_ADDR="0.0.0.0:8090"
+export OCIS_MCP_PUBLIC_URL="https://mcp.example.com"
+export OCIS_MCP_OIDC_CLIENT_ID="ocis"          # same Authentik app as oCIS
+export OCIS_MCP_OIDC_CLIENT_SECRET="..."
+export OCIS_MCP_GRANT_KEY="$(openssl rand -hex 32)"
+```
+
+**App Tokens (local / stdio):** Create in the oCIS web UI under Settings > Security > App tokens.
 
 ```bash
 export OCIS_MCP_OCIS_URL="https://ocis.example.com"
@@ -94,7 +110,13 @@ export OCIS_MCP_OIDC_ACCESS_TOKEN="<access-token>"
 | `OCIS_MCP_OCIS_URL` | Yes | Base URL of the oCIS instance |
 | `OCIS_MCP_TRANSPORT` | No | `stdio` (default) or `http` |
 | `OCIS_MCP_HTTP_ADDR` | No | Listen address for HTTP transport (default `127.0.0.1:8090`) |
-| `OCIS_MCP_HTTP_SECRET` | No* | Shared secret required as `Authorization: Bearer <secret>` on `/mcp`. *Required when the HTTP transport binds a non-loopback address. |
+| `OCIS_MCP_HTTP_SECRET` | No* | Shared secret required as `Authorization: Bearer <secret>` on `/mcp` in app-token/oidc HTTP mode. *Required when the HTTP transport binds a non-loopback address **unless** `OCIS_MCP_AUTH_MODE=oauth`. |
+| `OCIS_MCP_AUTH_MODE` | No | `app-token`, `oidc`, or `oauth` |
+| `OCIS_MCP_PUBLIC_URL` | oauth | Public URL of this server (browser + MCP clients) |
+| `OCIS_MCP_OIDC_CLIENT_ID` | oauth | Authentik client id — **share with the oCIS compose service** |
+| `OCIS_MCP_OIDC_CLIENT_SECRET` | oauth | Same secret as oCIS |
+| `OCIS_MCP_GRANT_KEY` | oauth | 32-byte hex; encrypts grants at rest |
+| `OCIS_MCP_GRANT_DB` | No | SQLite path (default `data/grants.db`) |
 | `OCIS_MCP_LOG_LEVEL` | No | `debug`, `info`, `warn`, `error` |
 
 ### Securing the HTTP transport
@@ -103,7 +125,10 @@ The HTTP transport runs every tool with the server's configured oCIS credential 
 admin app token). The `/mcp` endpoint therefore controls the full tool inventory, so it must
 not be reachable by untrusted callers.
 
-- **Authenticate callers.** Set `OCIS_MCP_HTTP_SECRET` to a long random value. The server then
+- **OAuth 2.1 (`OCIS_MCP_AUTH_MODE=oauth`)** is the multi-user path: `/mcp` requires a
+  per-user JWT, and tools are limited to the spaces that user ticked. See [OAUTH.md](OAUTH.md).
+  `OCIS_MCP_HTTP_SECRET` is not used in this mode.
+- **Authenticate callers (legacy HTTP).** Set `OCIS_MCP_HTTP_SECRET` to a long random value. The server then
   requires `Authorization: Bearer <secret>` on every `/mcp` request and rejects others with
   `401`. Configure your MCP client to send that header.
 - **Non-loopback binds require a secret.** When `OCIS_MCP_TRANSPORT=http` binds a non-loopback
@@ -116,7 +141,7 @@ not be reachable by untrusted callers.
   internet.
 - **Prefer `stdio`** (the default) for single-client, local use such as Claude Desktop — it has
   no network listener.
-- **There is no per-caller authorization.** `OCIS_MCP_HTTP_SECRET` gates access to the endpoint,
+- **There is no per-caller authorization in app-token HTTP mode.** `OCIS_MCP_HTTP_SECRET` gates access to the endpoint,
   not to individual tools or accounts. Every caller who presents a valid bearer token gets the
   full tool inventory running with the one oCIS credential configured on the server — if that
   credential is an admin app token, every caller effectively has admin access. Do not put this

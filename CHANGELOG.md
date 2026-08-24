@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **OAuth 2.1 resource server + space consent** (`OCIS_MCP_AUTH_MODE=oauth`).
+  MCP clients log in through the existing oCIS/Authentik IdP (no extra password
+  form). A three-step wizard lists every accessible space, offers only the
+  levels the user already has (read / write / admin = Viewer / Editor / Manager),
+  and a separate “Instance administration” checkbox for users/groups/roles.
+  Grants live in encrypted SQLite (AES-256-GCM). MCP JWTs do not carry the oCIS
+  access token. Docs: `OAUTH.md`, `docker-compose.example.yml`.
+
+### Changed
+
+- HTTP transport in oauth mode no longer requires `OCIS_MCP_HTTP_SECRET`
+  (per-user JWTs replace the shared secret).
+- `internal/client` prefers a request-scoped Bearer token from the grant so one
+  process can serve many users.
+
 ## [1.1.0] - 2026-07-14
 
 ### Added

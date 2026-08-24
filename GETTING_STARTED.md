@@ -30,6 +30,10 @@ Before we start, make sure you have:
 - [ ] **Go** installed (version 1.25 or newer) -- only needed if building from source.
       Get it from [go.dev/dl](https://go.dev/dl/). Not needed if you download a pre-built binary.
 
+> **Connecting many users over HTTP?** Use OAuth 2.1 mode instead of an app token.
+> That is the path for Docker Compose / Ansible: people log in with the usual
+> oCIS (Authentik) page and pick spaces. Full recipe in **[OAUTH.md](OAUTH.md)**.
+
 ## Step 1: Get the MCP Server Ready
 
 You can either **download a pre-built binary** (easiest) or build from source.
