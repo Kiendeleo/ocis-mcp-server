@@ -56,7 +56,10 @@ func ListenAndServe(ctx context.Context, d Deps) error {
 		d.MCP.AddReceivingMiddleware(grantMiddleware)
 
 		mux.HandleFunc("/.well-known/oauth-protected-resource", oa.ResourceMetadata)
+		mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", oa.ResourceMetadata)
+		mux.HandleFunc("/mcp/.well-known/oauth-protected-resource", oa.ResourceMetadata)
 		mux.HandleFunc("/.well-known/oauth-authorization-server", oa.ASMetadata)
+		mux.HandleFunc("/.well-known/oauth-authorization-server/mcp", oa.ASMetadata)
 		mux.HandleFunc("/register", oa.Register)
 		mux.HandleFunc("/authorize", cons.Authorize)
 		mux.HandleFunc("/oauth/callback", cons.Callback)
@@ -66,7 +69,9 @@ func ListenAndServe(ctx context.Context, d Deps) error {
 		mux.HandleFunc("/consent/levels", method(cons.LevelsGET, cons.LevelsPOST))
 		mux.HandleFunc("/consent/confirm", method(cons.ConfirmGET, cons.ConfirmPOST))
 
-		mux.Handle("/mcp", middleware.SecurityHeaders(mcpBearer(oa, st, d.Client)(mcpHandler)))
+		secured := middleware.SecurityHeaders(mcpBearer(oa, st, d.Client)(mcpHandler))
+		mux.Handle("/mcp", secured)
+		mux.Handle("/mcp/", secured)
 		slog.Info("OAuth 2.1 resource server enabled", "issuer", oa.Issuer, "resource", oa.Audience)
 	} else {
 		mux.Handle("/mcp", middleware.SecurityHeaders(middleware.RequireBearer(cfg.HTTPSecret)(mcpHandler)))
