@@ -1,0 +1,61 @@
+name: Publish oauth21
+
+on:
+  push:
+    branches:
+      - feat/oauth21-consent
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/kiendeleo/ocis-mcp-server
+  TAG: oauth21
+  GOTOOLCHAIN: auto
+
+jobs:
+  publish:
+    name: Build, release, GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Build linux amd64 binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -trimpath -ldflags="-s -w" \
+            -o ocis-mcp-server-linux-amd64 \
+            ./cmd/ocis-mcp-server
+          chmod 0755 ocis-mcp-server-linux-amd64
+          file ocis-mcp-server-linux-amd64
+
+      - name: Publish GitHub Release (rolling tag oauth21)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" ocis-mcp-server-linux-amd64 --clobber
+          else
+            gh release create "$TAG" ocis-mcp-server-linux-amd64 \
+              --target "$GITHUB_SHA" \
+              --title "OAuth 2.1 linux amd64" \
+              --notes "Rolling build from feat/oauth21-consent. Ansible get_url this asset."
+          fi
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push container image
+        run: |
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:${GITHUB_SHA::7}" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:${GITHUB_SHA::7}"
